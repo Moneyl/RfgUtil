@@ -1,0 +1,18 @@
+[submodule "Dependencies/BinaryTools"]
+	path = Dependencies/BinaryTools
+	url = https://github.com/Moneyl/BinaryTools.git
+[submodule "Dependencies/zlib"]
+	path = Dependencies/zlib
+	url = https://github.com/madler/zlib.git
+[submodule "Dependencies/tinyxml2"]
+	path = Dependencies/tinyxml2
+	url = https://github.com/leethomason/tinyxml2.git
+[submodule "Dependencies/tinygltf"]
+	path = Dependencies/tinygltf
+	url = https://github.com/syoyo/tinygltf.git
+[submodule "Dependencies/RfgToolsPlusPlus"]
+	path = Dependencies/RfgToolsPlusPlus
+	url = https://github.com/Moneyl/RfgToolsPlusPlus.git
+[submodule "Dependencies/cxxopts"]
+	path = Dependencies/cxxopts
+	url = https://github.com/jarro2783/cxxopts.git
