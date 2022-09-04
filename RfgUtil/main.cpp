@@ -17,19 +17,17 @@
 #define NOMINMAX
 #include <Windows.h>
 #pragma warning(default:4005)
-#include <errhandlingapi.h>
-#include <libloaderapi.h>
 
 cxxopts::Options options("RfgUtil", "A set of utilities for file formats used by Red Faction Guerrilla. Note that the options only apply to certain file formats/tools. That's listed at the start of each options description.");
-string InputPath; //First argument passed. Folder or file to operate on. Tool to use is determined automatically based on if it's a file or folder, and the file extension.
+std::vector<string> InputPaths; //First argument passed. Folder or file to operate on. Tool to use is determined automatically based on if it's a file or folder, and the file extension.
 string OutputPath;
 bool Verbose = false;
 bool RequireEnterToExit = false;
 
 //Tools built into the exe. Selected based on first path passed to exe. Checks if it's a folder or file and the file extension.
-void PackfileUnpacker(cxxopts::ParseResult& args);
-void PackfilePacker(cxxopts::ParseResult& args);
-void AsmPcUpdater(cxxopts::ParseResult& args);
+void PackfileUnpacker(cxxopts::ParseResult& args, const string& inputPath);
+void PackfilePacker(cxxopts::ParseResult& args, const string& inputPath);
+void AsmPcUpdater(cxxopts::ParseResult& args, const string& inputPath);
 
 //Exits program with specified result. Requires user to press enter before closing the window if they're using drag and drop. That way users can see any errors instead of it instantly closing
 void ErrorExit();
@@ -40,7 +38,7 @@ string GetExeFolder();
 void UpdateAsmPc(const string& asmPath);
 void UpdateAsmPc(AsmFile5& asmFile, const string& asmPath);
 
-const string RFG_UTIL_VERSION = "v1.0.0";
+const string RFG_UTIL_VERSION = "v1.1.0";
 const string AdditionalHelp = 
 R"(Some things to note:
     - To unpack a vpp_pc or str2_pc file drag and drop it onto the exe or pass it as the first command line option.
@@ -66,7 +64,7 @@ int main(int argc, char* argv[])
             ("p,primitives", "[.asm_pc] List primitives in an asm_pc file + the containers they're in. If this is passed the asm_pc won't be modified.", cxxopts::value<bool>()->default_value("false"))
             ("m,move", "[.asm_pc] Move container from one asm_pc to another. Place the source asm_pc path and the container name after this argument. E.g. RfgUtil.exe destination.asm_pc -m source.asm_pc containerName. Note that just using this command isn't enough. You should also copy the relevant assets to the destination str2_pc, repack it, and use the -u|--update argument to update the asm_pc based on the packed str2_pc.", cxxopts::value<bool>()->default_value("false"))
             ("u,update", "[.asm_pc] Update the contents of the asm_pc using the str2_pc files in the same folder. This is performed last if any other asm_pc arguments like -l, -p, or -m are passed. If you pass an asm_pc file and no arguments it'll also update the asm_pc.", cxxopts::value<bool>()->default_value("false"))
-            ("input", "", cxxopts::value<string>()->default_value(""))
+            ("input", "", cxxopts::value<std::vector<string>>()->default_value(""))
             ("output", "", cxxopts::value<string>()->default_value(""))
             ("container", "", cxxopts::value<string>()->default_value(""))
             ("v,verbose", "Log more status updates to the console.", cxxopts::value<bool>()->default_value("false"))
@@ -77,10 +75,13 @@ int main(int argc, char* argv[])
         //TODO: Support passing multiple files/folders to the tool. Currently the first argument must be the file/folder & any others are ignored
         //Extract file/folder path from unmatched args
         bool foundInputPath = false;
-        if (args["input"].as<string>() != "")
+        if (args["input"].as<std::vector<string>>().size() != 0)
         {
-            InputPath = args["input"].as<string>();
-            foundInputPath = true;
+            InputPaths = args["input"].as<std::vector<string>>();
+            if (InputPaths.size() == 1 && InputPaths[0] == "")
+                foundInputPath = false; //If not input path is entered it'll sometimes stick just an empty string in the list
+            else
+                foundInputPath = true;
         }
         if (args["output"].as<string>() != "")
             OutputPath = args["output"].as<string>();
@@ -106,39 +107,41 @@ int main(int argc, char* argv[])
                 printf("Arg: %s = %s\n", arg.key().c_str(), arg.value().c_str());
         }
 
-        if (Verbose)
-            printf("Input path: %s\n", InputPath.c_str());
-
         //Figure out which tool to use based on InputPath
-        if (std::filesystem::is_regular_file(InputPath))
+        for (string inputPath : InputPaths)
         {
-            string extension = Path::GetExtension(InputPath);
-            if (extension == ".vpp_pc" || extension == ".str2_pc")
+            if (std::filesystem::is_regular_file(inputPath))
             {
-                printf("Packfile detected. Extracting '%s'...\n", InputPath.c_str());
-                PackfileUnpacker(args);
+                string extension = Path::GetExtension(inputPath);
+                printf("Detected file path: '%s'. Extension = '%s'\n", inputPath.c_str(), extension.c_str());
+                if (extension == ".vpp_pc" || extension == ".str2_pc")
+                {
+                    printf("Packfile detected. Extracting '%s'...\n", inputPath.c_str());
+                    PackfileUnpacker(args, inputPath);
+                }
+                else if (extension == ".asm_pc")
+                {
+                    printf("asm_pc file detected. Updating '%s'...\n", inputPath.c_str());
+                    AsmPcUpdater(args, inputPath);
+                }
+                else
+                {
+                    printf("Unsupported file format '%s'. Exiting...", extension.c_str());
+                    ErrorExit();
+                }
             }
-            else if (extension == ".asm_pc")
+            else if (std::filesystem::is_directory(inputPath))
             {
-                printf("asm_pc file detected. Updating '%s'...\n", InputPath.c_str());
-                AsmPcUpdater(args);
+                printf("Folder detected. Packing '%s'...\n", inputPath.c_str());
+                PackfilePacker(args, inputPath);
             }
             else
             {
-                printf("Unsupported file format '%s'. Exiting...", extension.c_str());
+                printf("Failed to parse path '%s'. Please make sure it's either a folder or a file path. Exiting...", inputPath.c_str());
                 ErrorExit();
             }
         }
-        else if (std::filesystem::is_directory(InputPath))
-        {
-            printf("Folder detected. Packing '%s'...\n", InputPath.c_str());
-            PackfilePacker(args);
-        }
-        else
-        {
-            printf("Failed to parse path '%s'. Please make sure it's either a folder or a file path. Exiting...", InputPath.c_str());
-            ErrorExit();
-        }
+
     }
     catch (std::exception& ex)
     {
@@ -149,20 +152,20 @@ int main(int argc, char* argv[])
     SuccessExit();
 }
 
-void PackfileUnpacker(cxxopts::ParseResult& args)
+void PackfileUnpacker(cxxopts::ParseResult& args, const string& inputPath)
 {
     string packfileOutputPath = "";
     if (OutputPath == "")
-        packfileOutputPath = Path::GetParentDirectory(InputPath) + "\\" + Path::GetFileNameNoExtension(InputPath) + "\\";
+        packfileOutputPath = Path::GetParentDirectory(inputPath) + "\\Unpack\\" + Path::GetFileNameNoExtension(inputPath) + "\\";
     else
         packfileOutputPath = OutputPath + "\\";
 
     std::filesystem::create_directories(packfileOutputPath);
-    bool writeStreamsFile = (Path::GetExtension(InputPath) == ".str2_pc");
+    bool writeStreamsFile = (Path::GetExtension(inputPath) == ".str2_pc");
     if (Verbose)
         printf("packfileOutputPath: %s, writeStreamsFile: %s\n", packfileOutputPath.c_str(), writeStreamsFile ? "true" : "false");
 
-    Packfile3 packfile(InputPath);
+    Packfile3 packfile(inputPath);
     packfile.ReadMetadata();
     packfile.ExtractSubfiles(packfileOutputPath + "\\", writeStreamsFile);
 
@@ -186,7 +189,7 @@ void PackfileUnpacker(cxxopts::ParseResult& args)
     }
 }
 
-void PackfilePacker(cxxopts::ParseResult& args)
+void PackfilePacker(cxxopts::ParseResult& args, const string& inputPath)
 {
     bool compressed = args["compressed"].as<bool>();
     bool condensed = args["condensed"].as<bool>();
@@ -195,38 +198,38 @@ void PackfilePacker(cxxopts::ParseResult& args)
     if (OutputPath == "") //Write packfile to the parent folder if no custom output path is provided
     {
         //Get name of str2_pc file based on folder name. E.g. InputPath = ./mp_crashsite/mp_crashsite_map/ then str2Name = mp_crashsite_map
-        string str2Name = std::filesystem::path(InputPath + "\\").parent_path().filename().string();
+        string str2Name = std::filesystem::path(inputPath + "\\").parent_path().filename().string();
         if (str2Name.ends_with("\\") || str2Name.ends_with("/"))
             str2Name.pop_back();
 
-        bool isStr2 = std::filesystem::exists(InputPath + "\\@streams.xml");
-        packfileOutputPath = std::filesystem::path(InputPath + "\\").parent_path().parent_path().string() + "\\" + str2Name + (isStr2 ? ".str2_pc" : ".vpp_pc");
+        bool isStr2 = std::filesystem::exists(inputPath + "\\@streams.xml");
+        packfileOutputPath = std::filesystem::path(inputPath + "\\").parent_path().parent_path().string() + "\\" + str2Name + (isStr2 ? ".str2_pc" : ".vpp_pc");
     }
     else
         packfileOutputPath = OutputPath;
 
     if (Verbose)
     {
-        printf("InputPath: %s\n", (InputPath + "\\").c_str());
+        printf("InputPath: %s\n", (inputPath + "\\").c_str());
         printf("OutputPath: %s\n", packfileOutputPath.c_str());
     }
 
-    Packfile3::Pack(InputPath + "\\", packfileOutputPath, compressed, condensed);
+    Packfile3::Pack(inputPath + "\\", packfileOutputPath, compressed, condensed);
 }
 
-void AsmPcUpdater(cxxopts::ParseResult& args)
+void AsmPcUpdater(cxxopts::ParseResult& args, const string& inputPath)
 {
     //Default option is to update asm_pc. For easy update via drag and drop
     if (Verbose)
-        printf("InputPath: %s\n", InputPath.c_str());
+        printf("InputPath: %s\n", inputPath.c_str());
 
     if (args.arguments().size() == 0)
-        UpdateAsmPc(InputPath);
+        UpdateAsmPc(inputPath);
     else
     {
         AsmFile5 asmFile;
-        BinaryReader reader(InputPath);
-        asmFile.Read(reader, Path::GetFileName(InputPath));
+        BinaryReader reader(inputPath);
+        asmFile.Read(reader, Path::GetFileName(inputPath));
 
         //List containers
         if (args["containers"].as<bool>() || args["primitives"].as<bool>()) //Containers must also be listed if primitives are listed
@@ -252,7 +255,7 @@ void AsmPcUpdater(cxxopts::ParseResult& args)
         {
             string sourceAsmPath = OutputPath;
             string containerName = args["container"].as<string>();
-            printf("Copying %s from '%s' to '%s'\n", containerName.c_str(), sourceAsmPath.c_str(), InputPath.c_str());
+            printf("Copying %s from '%s' to '%s'\n", containerName.c_str(), sourceAsmPath.c_str(), inputPath.c_str());
             if (std::filesystem::exists(sourceAsmPath))
             {
                 //Load source asm_pc file
@@ -274,7 +277,7 @@ void AsmPcUpdater(cxxopts::ParseResult& args)
                     ErrorExit();
                 }
 
-                asmFile.Write(InputPath);
+                asmFile.Write(inputPath);
             }
             else //Source asm_pc doesn't exist
             {
@@ -286,7 +289,7 @@ void AsmPcUpdater(cxxopts::ParseResult& args)
         //Update asm_pc contents last if -u was passed along with other asm_pc arguments
         if (args["update"].as<bool>())
         {
-            UpdateAsmPc(asmFile, InputPath);
+            UpdateAsmPc(asmFile, inputPath);
         }
     }
 }
