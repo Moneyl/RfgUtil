@@ -83,8 +83,27 @@ int main(int argc, char* argv[])
             else
                 foundInputPath = true;
         }
+
+        //Patch local input paths so later code handles them correctly
+        for (string& str : InputPaths)
+        {
+            if (str.length() >= 2 && str[1] != ':' && !str.starts_with("./") && !str.starts_with(".\\"))
+                str = "./" + str;
+        }
+        if (Verbose)
+        {
+            for (string& str : InputPaths)
+            {
+                printf("Input path: '%s'\n", str.c_str());
+            }
+        }
+
         if (args["output"].as<string>() != "")
+        {
             OutputPath = args["output"].as<string>();
+            if (OutputPath.length() >= 2 && OutputPath[1] != ':')
+                OutputPath = "./" + OutputPath;
+        }
 
         if (args.arguments().size() == 0 && !foundInputPath) //Print help message if no args passed
         {
