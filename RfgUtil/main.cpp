@@ -242,8 +242,8 @@ void AsmPcUpdater(cxxopts::ParseResult& args, const string& inputPath)
     if (Verbose)
         printf("InputPath: %s\n", inputPath.c_str());
 
-    if (args.arguments().size() == 0)
-        UpdateAsmPc(inputPath);
+    if (args.arguments().size() == 1)
+        UpdateAsmPc(inputPath); //Update when no args passed aside from the path (happens with drag n drop)
     else
     {
         AsmFile5 asmFile;
