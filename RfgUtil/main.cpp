@@ -38,7 +38,7 @@ string GetExeFolder();
 void UpdateAsmPc(const string& asmPath);
 void UpdateAsmPc(AsmFile5& asmFile, const string& asmPath);
 
-const string RFG_UTIL_VERSION = "v1.1.0";
+const string RFG_UTIL_VERSION = "v1.2.0";
 const string AdditionalHelp = 
 R"(Some things to note:
     - To unpack a vpp_pc or str2_pc file drag and drop it onto the exe or pass it as the first command line option.
@@ -376,7 +376,10 @@ void UpdateAsmPc(AsmFile5& asmFile, const string& asmPath)
                 else
                     indices.DataIndex = curPrimSizeIndex++;
             }
-            const bool virtualContainer = container.CompressedSize == 0 && container.DataOffset == 0;
+            const bool virtualFlag = ((u16)container.Flags & 512) != 0;
+            const bool passiveFlag = ((u16)container.Flags & 256) != 0;
+            const bool realFlag = ((u16)container.Flags & 128) != 0;
+            const bool virtualContainer = (virtualFlag || passiveFlag) && (!realFlag);
 
             if (!virtualContainer && String::EqualIgnoreCase(Path::GetFileNameNoExtension(packfile.Name()), container.Name))
             {
