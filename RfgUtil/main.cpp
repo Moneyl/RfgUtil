@@ -191,12 +191,13 @@ void PackfileUnpacker(cxxopts::ParseResult& args, const string& inputPath)
     //Extract str2_pc files inside packfile if passed recursive option.
     if (args["recursive"].as<bool>())
     {
+        std::filesystem::create_directories(packfileOutputPath + "\\Unpack\\");
         for (auto& entry : std::filesystem::directory_iterator(packfileOutputPath))
         {
             if (entry.is_regular_file() && entry.path().extension() == ".str2_pc")
             {
                 printf("Extracting %s...\n", entry.path().filename().string().c_str());
-                string str2OutputPath = packfileOutputPath + "\\" + Path::GetFileNameNoExtension(entry.path().string()) + "\\";
+                string str2OutputPath = packfileOutputPath + "\\Unpack\\" + Path::GetFileNameNoExtension(entry.path().string()) + "\\";
                 if (Verbose)
                     printf("str2OutputPath: %s\n", str2OutputPath.c_str());
 
